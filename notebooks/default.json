@@ -1,0 +1,32 @@
+{
+  "cells": [
+    {
+      "id": "cell-84c82dd3",
+      "code": "x = 10",
+      "output": "",
+      "error": "",
+      "status": "success"
+    },
+    {
+      "id": "cell-bc707a80",
+      "code": "y = x + 5",
+      "output": "",
+      "error": "",
+      "status": "success"
+    },
+    {
+      "id": "cell-3e2a2d57",
+      "code": "print(f\"y is {y}\")",
+      "output": "y is 15",
+      "error": "",
+      "status": "success"
+    },
+    {
+      "id": "cell-53724d06",
+      "code": "print(y)",
+      "output": "15",
+      "error": "",
+      "status": "success"
+    }
+  ]
+}
