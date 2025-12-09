@@ -19,19 +19,23 @@ class CellData:
 
 class ReactiveEngine:
     """
-    Manages notebook cells and handles reactive re-execution.
+    Manages notebook cells and handles reactive re-execution (Excel-style DAG).
+    
+    Unlike Jupyter-style notebooks, cells can depend on ANY other cell
+    regardless of their vertical position. Dependencies are based purely
+    on which symbols a cell reads and which cell defines those symbols.
     
     When a cell is changed:
-    1. Rebuild the dependency graph
+    1. Rebuild the dependency graph (order-independent)
     2. Check for circular dependencies
-    3. Find all downstream cells that need re-execution
-    4. Topologically sort them
-    5. Execute in order
+    3. Find all transitively dependent cells (can be above or below)
+    4. Topologically sort them based on the dependency DAG
+    5. Execute in dependency order (not display order)
     """
     
     def __init__(self):
         self.cells: dict[str, CellData] = {}
-        self.cell_order: list[str] = []  # Maintains display order
+        self.cell_order: list[str] = []  # Maintains display order (UI only)
         self.kernel = NotebookKernel()
         self.analyzer = DependencyAnalyzer()
     
@@ -163,13 +167,24 @@ class ReactiveEngine:
     
     def execute_all(self) -> list[dict]:
         """
-        Execute all cells in order.
+        Execute all cells in topological order (respecting dependencies).
         
         Returns:
-            List of execution results
+            List of execution results in execution order
         """
+        cells_tuples = self._get_cells_as_tuples()
+        
+        # Check for cycles first
+        cycle_error = self.analyzer.has_cycle(cells_tuples)
+        if cycle_error:
+            return [{"cell_id": None, "status": "error", "output": "", "error": cycle_error}]
+        
+        # Get all cell IDs and sort topologically
+        all_cell_ids = set(self.cell_order)
+        execution_order = self.analyzer.topological_sort(all_cell_ids, cells_tuples)
+        
         results = []
-        for cell_id in self.cell_order:
+        for cell_id in execution_order:
             result = self.execute_cell(cell_id)
             results.append({"cell_id": cell_id, **result})
         return results

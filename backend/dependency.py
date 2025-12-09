@@ -143,16 +143,20 @@ class DependencyAnalyzer:
     @staticmethod
     def build_dependency_graph(cells: list[tuple[str, str]]) -> dict[str, set[str]]:
         """
-        Build a dependency graph from a list of cells.
+        Build a dependency graph from a list of cells (Excel-style DAG).
+        
+        Unlike Jupyter-style execution, cells can depend on ANY other cell
+        regardless of their vertical position. Dependencies are based purely
+        on which symbols a cell reads and which cell defines those symbols.
         
         Args:
-            cells: List of (cell_id, code) tuples in order
+            cells: List of (cell_id, code) tuples
         
         Returns:
             Dict mapping cell_id to set of cell_ids it depends on
             (i.e., cells that define variables this cell uses)
         """
-        # First pass: collect what each cell defines
+        # First pass: collect what each cell defines and uses
         cell_defines: dict[str, set[str]] = {}
         cell_uses: dict[str, set[str]] = {}
         
@@ -161,33 +165,27 @@ class DependencyAnalyzer:
             cell_defines[cell_id] = defined
             cell_uses[cell_id] = used
         
-        # Build mapping of variable -> cell that defines it (last definition wins)
-        # We process in order so later cells override earlier ones
+        # Build mapping of variable -> cell that defines it
+        # If multiple cells define the same variable, first one in display order wins
+        # (This provides deterministic behavior)
         var_to_cell: dict[str, str] = {}
-        cell_order = [cell_id for cell_id, _ in cells]
         
         for cell_id, code in cells:
             for var in cell_defines[cell_id]:
-                var_to_cell[var] = cell_id
+                if var not in var_to_cell:
+                    var_to_cell[var] = cell_id
         
         # Second pass: for each cell, find which cells it depends on
         # A cell depends on another if it uses a variable that the other defines
-        # AND the defining cell comes before the using cell
+        # Position does NOT matter - any cell can depend on any other cell
         dependencies: dict[str, set[str]] = {cell_id: set() for cell_id, _ in cells}
         
         for cell_id, code in cells:
-            cell_idx = cell_order.index(cell_id)
-            
             for var in cell_uses[cell_id]:
                 # Find which cell defines this variable
-                # We need to find the most recent definition BEFORE this cell
-                defining_cell = None
-                for i in range(cell_idx - 1, -1, -1):
-                    other_id = cell_order[i]
-                    if var in cell_defines[other_id]:
-                        defining_cell = other_id
-                        break
+                defining_cell = var_to_cell.get(var)
                 
+                # Add dependency if defined by a different cell
                 if defining_cell and defining_cell != cell_id:
                     dependencies[cell_id].add(defining_cell)
         
@@ -201,23 +199,27 @@ class DependencyAnalyzer:
         """
         Find all cells that depend on the given cell (directly or transitively).
         
+        This is order-independent - a cell at any position can depend on the
+        changed cell if it uses a variable that the changed cell defines.
+        
         Args:
             cell_id: The cell that was changed
-            cells: List of (cell_id, code) tuples in order
+            cells: List of (cell_id, code) tuples
         
         Returns:
-            Set of cell IDs that need to be re-executed
+            Set of cell IDs that need to be re-executed (excludes the changed cell itself)
         """
-        # Build dependency graph
+        # Build dependency graph (order-independent)
         dep_graph = DependencyAnalyzer.build_dependency_graph(cells)
         
         # Build reverse graph (cell -> cells that depend on it)
         reverse_graph: dict[str, set[str]] = {cid: set() for cid, _ in cells}
         for cid, deps in dep_graph.items():
             for dep in deps:
-                reverse_graph[dep].add(cid)
+                if dep in reverse_graph:
+                    reverse_graph[dep].add(cid)
         
-        # BFS to find all downstream cells
+        # BFS to find all downstream cells (transitive dependents)
         downstream = set()
         queue = list(reverse_graph.get(cell_id, set()))
         
@@ -235,22 +237,24 @@ class DependencyAnalyzer:
         cells: list[tuple[str, str]]
     ) -> list[str]:
         """
-        Topologically sort the given cells based on dependencies.
+        Topologically sort the given cells based on the dependency DAG.
         
-        Uses Kahn's algorithm. Only sorts the given subset but uses
-        the full dependency graph for ordering.
+        Uses Kahn's algorithm. Execution order is determined purely by
+        the dependency graph, not by visual position. When there are
+        multiple valid orderings (cells with no dependencies on each other),
+        display order is used as a tiebreaker for deterministic output.
         
         Args:
             cell_ids: Set of cell IDs to sort
-            cells: List of all (cell_id, code) tuples in order
+            cells: List of all (cell_id, code) tuples (used for tiebreaking)
         
         Returns:
-            List of cell IDs in valid execution order
+            List of cell IDs in valid execution order (dependencies before dependents)
         """
         if not cell_ids:
             return []
         
-        # Build dependency graph for the subset
+        # Build dependency graph (order-independent)
         full_dep_graph = DependencyAnalyzer.build_dependency_graph(cells)
         
         # Filter to only include edges within our subset
@@ -260,23 +264,19 @@ class DependencyAnalyzer:
             if cid in cell_ids
         }
         
-        # Calculate in-degrees
-        in_degree = {cid: 0 for cid in cell_ids}
-        for cid, deps in dep_graph.items():
-            for dep in deps:
-                if dep in in_degree:
-                    in_degree[cid] = in_degree.get(cid, 0) + 1
+        # Calculate in-degrees (number of dependencies within the subset)
+        in_degree = {cid: len(dep_graph.get(cid, set())) for cid in cell_ids}
         
-        # Start with nodes that have no dependencies
+        # Start with nodes that have no dependencies within the subset
         queue = [cid for cid in cell_ids if in_degree[cid] == 0]
         
-        # Sort queue by original cell order for deterministic output
+        # Sort queue by display order for deterministic output when there are ties
         cell_order = [cell_id for cell_id, _ in cells]
         queue.sort(key=lambda x: cell_order.index(x) if x in cell_order else float('inf'))
         
         result = []
         while queue:
-            # Take the first cell (maintains original order when possible)
+            # Take the first cell (maintains display order when possible)
             current = queue.pop(0)
             result.append(current)
             
