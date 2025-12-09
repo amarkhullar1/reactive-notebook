@@ -1,28 +1,67 @@
 # Reactive Notebook
 
-A minimal reactive Python notebook where editing a cell automatically re-runs dependent cells.
+A reactive Python notebook with **Excel-style dependency tracking** where cells can depend on any other cell regardless of vertical position.
 
 ## Features
 
-- **Reactive Execution**: Edit any cell and watch dependent cells automatically re-run
+- **Excel-Style Reactive Execution**: Cells can depend on ANY other cell, not just cells above them
+- **Automatic Dependency Detection**: Uses Python AST to detect variable definitions and usages
+- **Topological Execution Order**: Cells execute in dependency order, not display order
 - **Live Feedback**: See execution status (idle/running/success/error) for each cell
-- **Dependency Detection**: Automatic detection of variable dependencies between cells
+- **Cycle Detection**: Circular dependencies are detected and reported
 - **Monaco Editor**: Full-featured Python code editing with syntax highlighting
 - **Persistence**: Notebook state is saved to disk and restored on restart
 
+## How It Differs from Jupyter
+
+| Feature | Jupyter | Reactive Notebook |
+|---------|---------|-------------------|
+| Dependencies | Cells only see variables from cells executed above | Cells can depend on any other cell |
+| Execution | Manual, in any order | Automatic, respects dependency DAG |
+| Variable Scope | Based on execution order | Based on symbol definitions |
+
+### Example
+
+```
+Cell 1: result = x + y    # Depends on x, y from cells below
+Cell 2: x = 10
+Cell 3: y = 20
+```
+
+In **Jupyter**: Cell 1 would fail (x, y not defined)
+In **Reactive Notebook**: Execution order is Cell 2 → Cell 3 → Cell 1, result = 30 ✓
+
 ## Quick Start
 
-### Backend Setup
+### Using Make (Recommended)
+
+```bash
+# Install all dependencies
+make install
+
+# Run in development mode (backend + frontend)
+make dev
+
+# Run tests
+make test
+
+# See all available commands
+make help
+```
+
+### Manual Setup
+
+#### Backend Setup
 
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
+python3 -m venv ../venv
+source ../venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -r ../requirements.txt
 uvicorn main:app --reload
 ```
 
-### Frontend Setup (Development)
+#### Frontend Setup (Development)
 
 In a separate terminal:
 
@@ -36,14 +75,11 @@ Open your browser to http://localhost:5173
 
 ### Production Mode
 
-Build the frontend and run from a single server:
-
 ```bash
-cd frontend
-npm run build
-
-cd ../backend
-uvicorn main:app --host 0.0.0.0 --port 8000
+make prod
+# Or manually:
+cd frontend && npm run build
+cd ../backend && uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 Open your browser to http://localhost:8000
@@ -52,21 +88,63 @@ Open your browser to http://localhost:8000
 
 - **Backend**: Python + FastAPI with WebSocket for real-time communication
 - **Frontend**: React + TypeScript + Monaco Editor
-- **Dependency Detection**: Python AST analysis
+- **Dependency Detection**: Python AST analysis (order-independent)
 - **Execution**: Direct `exec()` in shared namespace
 
 ## How It Works
 
 1. When you edit a cell, the frontend debounces and sends the update to the backend
 2. The backend analyzes dependencies using Python's AST module
-3. It finds all downstream cells that depend on variables defined in the changed cell
-4. It topologically sorts the affected cells and executes them in order
-5. Results are streamed back to the frontend in real-time
+3. It builds an order-independent dependency DAG based on symbol definitions/usages
+4. It finds all transitively dependent cells (which can be above or below)
+5. It topologically sorts affected cells and executes them in dependency order
+6. Results are streamed back to the frontend in real-time
 
 ## Keyboard Shortcuts
 
 - `Shift + Enter`: Run the current cell
 - `Cmd/Ctrl + Enter`: Add a new cell
+
+## Testing
+
+```bash
+# Run all tests
+make test
+
+# Run tests in watch mode
+make test-watch
+
+# Run tests directly with pytest
+cd backend && python -m pytest -v
+```
+
+### Test Coverage
+
+- **73 tests** covering:
+  - Variable definition detection (assignments, functions, classes, imports)
+  - Variable usage detection
+  - Dependency graph construction (Excel-style)
+  - Downstream cell detection
+  - Topological sorting
+  - Cycle detection
+  - Kernel execution (success, errors, output capture)
+  - Reactive engine (cell management, execution flow)
+
+## Makefile Commands
+
+| Command | Description |
+|---------|-------------|
+| `make install` | Install all dependencies |
+| `make dev` | Start both backend and frontend in dev mode |
+| `make dev-backend` | Start backend only with hot reload |
+| `make dev-frontend` | Start frontend only (Vite) |
+| `make build` | Build frontend for production |
+| `make prod` | Build and start in production mode |
+| `make start` | Start production server |
+| `make stop` | Stop all running servers |
+| `make restart` | Restart the application |
+| `make test` | Run all tests |
+| `make clean` | Remove build artifacts |
 
 ## Limitations (MVP)
 
@@ -75,4 +153,4 @@ Open your browser to http://localhost:8000
 - No timeout handling (infinite loops will hang the server)
 - No sandbox (runs with full Python access)
 - Text-only output (no images or HTML)
-
+- If multiple cells define the same variable, first one in display order wins
