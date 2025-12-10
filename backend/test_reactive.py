@@ -70,6 +70,73 @@ class TestNotebookKernel:
         result = self.kernel.execute_cell("cell2", "print(x)")
         assert result["status"] == "error"
         assert "NameError" in result["error"]
+    
+    def test_timeout_infinite_loop(self):
+        """Infinite loops should timeout gracefully."""
+        import platform
+        if platform.system() == 'Windows':
+            pytest.skip("Timeout not supported on Windows")
+        
+        # Create kernel with short timeout for testing
+        kernel = NotebookKernel(timeout=1)
+        result = kernel.execute_cell("cell1", "while True: pass")
+        
+        assert result["status"] == "error"
+        assert "TimeoutError" in result["error"]
+        assert "timed out" in result["error"].lower()
+    
+    def test_timeout_long_computation(self):
+        """Long computations should timeout."""
+        import platform
+        if platform.system() == 'Windows':
+            pytest.skip("Timeout not supported on Windows")
+        
+        kernel = NotebookKernel(timeout=1)
+        # This will take way longer than 1 second
+        result = kernel.execute_cell("cell1", """
+import time
+time.sleep(10)
+""")
+        
+        assert result["status"] == "error"
+        assert "TimeoutError" in result["error"]
+    
+    def test_timeout_custom_per_cell(self):
+        """Can specify timeout per cell execution."""
+        import platform
+        if platform.system() == 'Windows':
+            pytest.skip("Timeout not supported on Windows")
+        
+        kernel = NotebookKernel(timeout=60)  # Long default
+        result = kernel.execute_cell("cell1", "while True: pass", timeout=1)
+        
+        assert result["status"] == "error"
+        assert "TimeoutError" in result["error"]
+    
+    def test_fast_code_no_timeout(self):
+        """Fast code should complete without timeout."""
+        kernel = NotebookKernel(timeout=5)
+        result = kernel.execute_cell("cell1", "x = sum(range(1000))\nx")
+        
+        assert result["status"] == "success"
+        assert "499500" in result["output"]
+    
+    def test_namespace_preserved_after_timeout(self):
+        """Namespace should be preserved even after timeout."""
+        import platform
+        if platform.system() == 'Windows':
+            pytest.skip("Timeout not supported on Windows")
+        
+        kernel = NotebookKernel(timeout=1)
+        
+        # First set a variable
+        kernel.execute_cell("cell1", "x = 42")
+        
+        # Then timeout
+        kernel.execute_cell("cell2", "while True: pass")
+        
+        # Variable should still be there
+        assert kernel.get_variable("x") == 42
 
 
 class TestReactiveEngine:
