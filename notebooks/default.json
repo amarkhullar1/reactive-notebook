@@ -88,19 +88,35 @@
     },
     {
       "id": "cell-3120467a",
-      "code": "y = 11",
+      "code": "y = 14**3**3**2",
       "output": "",
       "rich_output": null,
       "error": "",
       "status": "success"
     },
     {
-      "id": "cell-3ad52be1",
+      "id": "cell-ed8b85f9",
+      "code": "print(y)",
+      "output": "",
+      "rich_output": null,
+      "error": "ValueError: Exceeds the limit (4300 digits) for integer string conversion; use sys.set_int_max_str_digits() to increase the limit",
+      "status": "error"
+    },
+    {
+      "id": "cell-bcb6cbb8",
       "code": "while True:\n    pass",
       "output": "",
       "rich_output": null,
-      "error": "TimeoutError: Cell execution timed out after 5 seconds",
+      "error": "Interrupted",
       "status": "error"
+    },
+    {
+      "id": "cell-35010800",
+      "code": "",
+      "output": "",
+      "rich_output": null,
+      "error": "",
+      "status": "idle"
     }
   ]
 }

@@ -2,6 +2,7 @@
 import ast
 import sys
 import math
+import threading
 import multiprocessing
 from multiprocessing import Process, Queue
 from io import StringIO
@@ -314,6 +315,9 @@ class NotebookKernel:
         self.timeout = timeout
         self.cell_outputs: dict[str, dict] = {}
         
+        # Lock for thread-safe access to worker and queues
+        self._lock = threading.Lock()
+        
         # Worker process and communication queues
         self._request_queue: Optional[Queue] = None
         self._response_queue: Optional[Queue] = None
@@ -372,15 +376,16 @@ class NotebookKernel:
     
     def reset(self):
         """Reset the kernel namespace."""
-        self._ensure_worker()
-        self.cell_outputs.clear()
-        
-        try:
-            self._request_queue.put({"type": CMD_RESET})
-            self._response_queue.get(timeout=5)
-        except Exception:
-            # If reset fails, restart the worker
-            self._start_worker()
+        with self._lock:
+            self._ensure_worker()
+            self.cell_outputs.clear()
+            
+            try:
+                self._request_queue.put({"type": CMD_RESET})
+                self._response_queue.get(timeout=5)
+            except Exception:
+                # If reset fails, restart the worker
+                self._start_worker()
     
     @property
     def is_busy(self) -> bool:
@@ -401,21 +406,22 @@ class NotebookKernel:
         Returns:
             Dict with status information
         """
-        cell_id = self._current_cell_id
-        was_executing = self._executing
-        
-        # Put interrupt sentinel on the old response queue to unblock any waiting threads
-        # This must happen BEFORE we restart the worker (which creates new queues)
-        if self._response_queue is not None:
-            try:
-                self._response_queue.put(INTERRUPTED_SENTINEL)
-            except Exception:
-                pass  # Queue might be broken
-        
-        # Restart the worker (this kills any running code)
-        self._start_worker()
-        self._executing = False
-        self._current_cell_id = None
+        with self._lock:
+            cell_id = self._current_cell_id
+            was_executing = self._executing
+            
+            # Put interrupt sentinel on the old response queue to unblock any waiting threads
+            # This must happen BEFORE we restart the worker (which creates new queues)
+            if self._response_queue is not None:
+                try:
+                    self._response_queue.put(INTERRUPTED_SENTINEL)
+                except Exception:
+                    pass  # Queue might be broken
+            
+            # Restart the worker (this kills any running code)
+            self._start_worker()
+            self._executing = False
+            self._current_cell_id = None
         
         if was_executing:
             return {
@@ -448,8 +454,6 @@ class NotebookKernel:
             - output: Combined stdout and last expression value
             - error: Error message if any
         """
-        self._ensure_worker()
-        
         if not code.strip():
             result = {
                 "status": "success",
@@ -467,21 +471,50 @@ class NotebookKernel:
         self._current_cell_id = cell_id
         
         try:
-            # Send execution request to worker
-            self._request_queue.put({
-                "type": CMD_EXECUTE,
-                "code": code
-            })
+            # Capture queue references under lock to avoid race with interrupt()
+            with self._lock:
+                self._ensure_worker()
+                request_queue = self._request_queue
+                response_queue = self._response_queue
             
-            # Wait for response with timeout
+            # Check if queues are valid (could be None if interrupted between lock release and here)
+            if request_queue is None or response_queue is None:
+                result = {
+                    "status": "error",
+                    "output": "",
+                    "rich_output": None,
+                    "error": "Interrupted"
+                }
+                self.cell_outputs[cell_id] = result
+                return result
+            
+            # Send execution request to worker (outside lock to avoid blocking)
             try:
-                result = self._response_queue.get(timeout=effective_timeout)
+                request_queue.put({
+                    "type": CMD_EXECUTE,
+                    "code": code
+                })
+            except (AttributeError, OSError):
+                # Queue was closed/replaced by interrupt
+                result = {
+                    "status": "error",
+                    "output": "",
+                    "rich_output": None,
+                    "error": "Interrupted"
+                }
+                self.cell_outputs[cell_id] = result
+                return result
+            
+            # Wait for response with timeout (outside lock to allow interrupt)
+            try:
+                result = response_queue.get(timeout=effective_timeout)
                 
                 # Check if this is an interrupt sentinel
                 if isinstance(result, dict) and result.get("__interrupted__"):
                     result = {
                         "status": "error",
                         "output": "",
+                        "rich_output": None,
                         "error": "Interrupted"
                     }
             except Empty:
@@ -493,9 +526,18 @@ class NotebookKernel:
                     "error": f"TimeoutError: Cell execution timed out after {effective_timeout} seconds"
                 }
                 # Restart worker (this kills the hanging process)
-                self._start_worker()
+                with self._lock:
+                    self._start_worker()
+            except (AttributeError, OSError):
+                # Queue was closed/replaced by interrupt
+                result = {
+                    "status": "error",
+                    "output": "",
+                    "rich_output": None,
+                    "error": "Interrupted"
+                }
             
-            # Ensure rich_output is present (worker doesn't return it)
+            # Ensure rich_output is present
             if "rich_output" not in result:
                 result["rich_output"] = None
         finally:
@@ -507,32 +549,49 @@ class NotebookKernel:
     
     def get_variable(self, name: str) -> Any:
         """Get a variable from the namespace."""
-        self._ensure_worker()
+        with self._lock:
+            self._ensure_worker()
+            request_queue = self._request_queue
+            response_queue = self._response_queue
+        
+        if request_queue is None or response_queue is None:
+            return None
         
         try:
-            self._request_queue.put({
+            request_queue.put({
                 "type": CMD_GET_VAR,
                 "name": name
             })
-            response = self._response_queue.get(timeout=5)
+            response = response_queue.get(timeout=5)
             return response.get("value")
         except Exception:
             return None
     
     def set_variable(self, name: str, value: Any):
         """Set a variable in the namespace."""
-        self._ensure_worker()
+        with self._lock:
+            self._ensure_worker()
+            request_queue = self._request_queue
+            response_queue = self._response_queue
+        
+        if request_queue is None or response_queue is None:
+            return
         
         try:
-            self._request_queue.put({
+            request_queue.put({
                 "type": CMD_SET_VAR,
                 "name": name,
                 "value": value
             })
-            self._response_queue.get(timeout=5)
+            response_queue.get(timeout=5)
         except Exception:
             pass
     
     def __del__(self):
         """Clean up worker process on deletion."""
-        self._stop_worker()
+        # Use lock if available (might not be during interpreter shutdown)
+        if hasattr(self, '_lock'):
+            with self._lock:
+                self._stop_worker()
+        else:
+            self._stop_worker()
