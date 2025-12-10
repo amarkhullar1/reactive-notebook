@@ -108,11 +108,6 @@ jobs:
           echo "Application failed to start" >&2
           exit 1
 
-      - name: Install Playwright (UI testing ready)
-        run: |
-          cd frontend
-          npx playwright install --with-deps
-
       - name: Run end-to-end tests (if present)
         run: |
           cd frontend
