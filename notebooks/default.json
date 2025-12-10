@@ -76,6 +76,7 @@
           1,
           2
         ],
+        "name": null,
         "shape": [
           3,
           3
@@ -87,7 +88,7 @@
     },
     {
       "id": "cell-3120467a",
-      "code": "y = 12",
+      "code": "y = 14**3**3**2",
       "output": "",
       "rich_output": null,
       "error": "",
@@ -96,10 +97,10 @@
     {
       "id": "cell-ed8b85f9",
       "code": "print(y)",
-      "output": "12",
+      "output": "",
       "rich_output": null,
-      "error": "",
-      "status": "success"
+      "error": "ValueError: Exceeds the limit (4300 digits) for integer string conversion; use sys.set_int_max_str_digits() to increase the limit",
+      "status": "error"
     },
     {
       "id": "cell-bcb6cbb8",
@@ -108,6 +109,14 @@
       "rich_output": null,
       "error": "Interrupted",
       "status": "error"
+    },
+    {
+      "id": "cell-35010800",
+      "code": "",
+      "output": "",
+      "rich_output": null,
+      "error": "",
+      "status": "idle"
     }
   ]
 }
