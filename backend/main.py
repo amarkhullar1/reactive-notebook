@@ -164,8 +164,8 @@ async def cancel_current_execution(silent: bool = False):
     # Set flag to cancel execution loop
     _execution_cancelled = True
     
-    # Interrupt the kernel (kills worker process)
-    interrupt_result = engine.kernel.interrupt()
+    # Interrupt the kernel (kills worker process) - run in thread to not block
+    interrupt_result = await asyncio.to_thread(engine.kernel.interrupt)
     
     # Cancel the task if it exists
     if _execution_task and not _execution_task.done():

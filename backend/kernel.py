@@ -161,6 +161,9 @@ CMD_SET_VAR = "set_var"
 CMD_RESET = "reset"
 CMD_SHUTDOWN = "shutdown"
 
+# Sentinel value to signal interrupt
+INTERRUPTED_SENTINEL = {"__interrupted__": True}
+
 
 def _execute_code(code: str, namespace: dict) -> dict:
     """
@@ -399,6 +402,14 @@ class NotebookKernel:
         cell_id = self._current_cell_id
         was_executing = self._executing
         
+        # Put interrupt sentinel on the old response queue to unblock any waiting threads
+        # This must happen BEFORE we restart the worker (which creates new queues)
+        if self._response_queue is not None:
+            try:
+                self._response_queue.put(INTERRUPTED_SENTINEL)
+            except Exception:
+                pass  # Queue might be broken
+        
         # Restart the worker (this kills any running code)
         self._start_worker()
         self._executing = False
@@ -463,6 +474,14 @@ class NotebookKernel:
             # Wait for response with timeout
             try:
                 result = self._response_queue.get(timeout=effective_timeout)
+                
+                # Check if this is an interrupt sentinel
+                if isinstance(result, dict) and result.get("__interrupted__"):
+                    result = {
+                        "status": "error",
+                        "output": "",
+                        "error": "Interrupted"
+                    }
             except Empty:
                 # Timeout! Kill the worker and restart
                 result = {
