@@ -1,4 +1,5 @@
 """FastAPI application with WebSocket endpoint for the reactive notebook."""
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -9,7 +10,8 @@ from fastapi.responses import FileResponse
 from models import (
     Cell, RichOutput, CellUpdatedMessage, ExecuteCellMessage, AddCellMessage, DeleteCellMessage,
     NotebookStateMessage, CellAddedMessage, CellDeletedMessage,
-    ExecutionStartedMessage, ExecutionResultMessage, ExecutionQueueMessage, ErrorMessage
+    ExecutionStartedMessage, ExecutionResultMessage, ExecutionQueueMessage, 
+    ExecutionInterruptedMessage, ErrorMessage
 )
 from reactive import ReactiveEngine
 
@@ -17,6 +19,10 @@ app = FastAPI(title="Reactive Notebook")
 
 # Initialize the reactive engine
 engine = ReactiveEngine()
+
+# Track current execution task for cancellation
+_current_execution_task: asyncio.Task | None = None
+_execution_cancelled: bool = False
 
 # Path to notebooks directory
 NOTEBOOKS_DIR = Path(__file__).parent.parent / "notebooks"
@@ -138,10 +144,14 @@ async def handle_message(websocket: WebSocket, data: dict):
         await handle_add_cell(websocket, data)
     elif msg_type == "delete_cell":
         await handle_delete_cell(websocket, data)
+    elif msg_type == "interrupt":
+        await handle_interrupt(websocket)
 
 
 async def handle_cell_updated(websocket: WebSocket, data: dict):
     """Handle cell code update and trigger reactive execution."""
+    global _current_execution_task, _execution_cancelled
+    
     cell_id = data["cell_id"]
     code = data["code"]
     
@@ -158,18 +168,40 @@ async def handle_cell_updated(websocket: WebSocket, data: dict):
     execution_order = result.get("execution_order", [])
     
     if execution_order:
+        # Reset cancellation flag
+        _execution_cancelled = False
+        
         # Send execution queue
         queue_msg = ExecutionQueueMessage(cell_ids=execution_order)
         await manager.broadcast(queue_msg.model_dump())
         
         # Execute cells in order
         for exec_cell_id in execution_order:
+            # Check if cancelled
+            if _execution_cancelled:
+                # Mark remaining cells as idle
+                for remaining_id in execution_order[execution_order.index(exec_cell_id):]:
+                    if remaining_id in engine.cells:
+                        engine.cells[remaining_id].status = "idle"
+                break
+            
             # Send execution started
             started_msg = ExecutionStartedMessage(cell_id=exec_cell_id)
             await manager.broadcast(started_msg.model_dump())
             
-            # Execute cell
-            exec_result = engine.execute_cell(exec_cell_id)
+            # Execute cell in a thread to not block the event loop
+            # This allows other WebSocket messages (like interrupt) to be processed
+            exec_result = await asyncio.to_thread(engine.execute_cell, exec_cell_id)
+            
+            # Check if interrupted during execution
+            if _execution_cancelled:
+                # Send interrupted message
+                interrupted_msg = ExecutionInterruptedMessage(
+                    cell_id=exec_cell_id,
+                    message="Execution interrupted"
+                )
+                await manager.broadcast(interrupted_msg.model_dump())
+                break
             
             # Build rich_output model if present
             rich_output = None
@@ -230,6 +262,26 @@ async def handle_delete_cell(websocket: WebSocket, data: dict):
         deleted_msg = CellDeletedMessage(cell_id=cell_id)
         await manager.broadcast(deleted_msg.model_dump())
         save_notebook()
+
+
+async def handle_interrupt(websocket: WebSocket):
+    """Handle interrupt request - stops current execution."""
+    global _execution_cancelled
+    
+    # Set flag to cancel execution loop
+    _execution_cancelled = True
+    
+    # Interrupt the kernel (kills worker process)
+    interrupt_result = engine.kernel.interrupt()
+    
+    # Send interrupted message
+    interrupted_msg = ExecutionInterruptedMessage(
+        cell_id=interrupt_result.get("cell_id"),
+        message=interrupt_result.get("message", "Execution interrupted")
+    )
+    await manager.broadcast(interrupted_msg.model_dump())
+    
+    save_notebook()
 
 
 # Serve static files in production

@@ -59,6 +59,11 @@ class DeleteCellMessage(BaseModel):
     cell_id: str
 
 
+class InterruptMessage(BaseModel):
+    """User wants to interrupt execution."""
+    type: Literal["interrupt"] = "interrupt"
+
+
 # Backend → Frontend Messages
 
 class NotebookStateMessage(BaseModel):
@@ -100,6 +105,13 @@ class ExecutionQueueMessage(BaseModel):
     """Multiple cells queued for execution."""
     type: Literal["execution_queue"] = "execution_queue"
     cell_ids: list[str]
+
+
+class ExecutionInterruptedMessage(BaseModel):
+    """Execution was interrupted by user."""
+    type: Literal["execution_interrupted"] = "execution_interrupted"
+    cell_id: Optional[str] = None
+    message: str = "Execution interrupted"
 
 
 class ErrorMessage(BaseModel):
