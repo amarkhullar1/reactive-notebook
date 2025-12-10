@@ -245,7 +245,10 @@ class TestReactiveEngine:
         result = self.engine.on_cell_changed("cell1", "a = b")
         
         assert "error" in result
-        assert "Circular dependency" in result["error"]
+        assert "Circular dependency detected" in result["error"]
+        # Should use cell numbers, not cell IDs
+        assert "cell 1" in result["error"]
+        assert "cell 2" in result["error"]
     
     def test_execute_all_topological_order(self):
         """execute_all should run cells in topological order."""
@@ -270,6 +273,97 @@ class TestReactiveEngine:
         
         assert self.engine.cells["cell1"].status == "idle"
         assert self.engine.cells["cell1"].output == ""
+
+
+class TestDuplicateVariableDetection:
+    """Tests for duplicate variable definition detection."""
+    
+    def setup_method(self):
+        self.engine = ReactiveEngine()
+    
+    def test_duplicate_definition_error_on_cell_changed(self):
+        """on_cell_changed should return error when duplicate definitions exist."""
+        self.engine.add_cell(cell_id="cell1", code="x = 10")
+        self.engine.add_cell(cell_id="cell2", code="y = 20")
+        
+        # Now change cell2 to also define x
+        result = self.engine.on_cell_changed("cell2", "x = 30")
+        
+        assert "error" in result
+        assert "Variable 'x' is defined in multiple cells" in result["error"]
+        assert "cell 1" in result["error"]
+        assert "cell 2" in result["error"]
+    
+    def test_duplicate_definition_error_on_execute_all(self):
+        """execute_all should return error when duplicate definitions exist."""
+        self.engine.add_cell(cell_id="cell1", code="x = 10")
+        self.engine.add_cell(cell_id="cell2", code="x = 20")
+        
+        results = self.engine.execute_all()
+        
+        assert len(results) == 1
+        assert results[0]["status"] == "error"
+        assert "Variable 'x' is defined in multiple cells: cell 1, cell 2" in results[0]["error"]
+    
+    def test_no_error_when_no_duplicates(self):
+        """No error when each variable is defined in exactly one cell."""
+        self.engine.add_cell(cell_id="cell1", code="x = 10")
+        self.engine.add_cell(cell_id="cell2", code="y = x + 1")
+        
+        result = self.engine.on_cell_changed("cell1", "x = 20")
+        
+        assert "execution_order" in result
+        assert "error" not in result
+    
+    def test_duplicate_sets_cell_error_status(self):
+        """The changed cell should have error status when duplicates detected."""
+        self.engine.add_cell(cell_id="cell1", code="x = 10")
+        self.engine.add_cell(cell_id="cell2", code="y = 20")
+        
+        self.engine.on_cell_changed("cell2", "x = 30")
+        
+        assert self.engine.cells["cell2"].status == "error"
+        assert "Variable 'x'" in self.engine.cells["cell2"].error
+    
+    def test_duplicate_checked_before_cycle(self):
+        """Duplicate check should happen before cycle detection."""
+        # Create a situation that would be both a cycle AND a duplicate
+        self.engine.add_cell(cell_id="cell1", code="x = y")
+        self.engine.add_cell(cell_id="cell2", code="y = x")  # This creates a cycle
+        
+        # Now also make it a duplicate by adding x definition to cell2
+        result = self.engine.on_cell_changed("cell2", "x = 1\ny = x")
+        
+        # Should get duplicate error, not cycle error
+        assert "error" in result
+        assert "Variable 'x' is defined in multiple cells" in result["error"]
+    
+    def test_fixing_duplicate_allows_execution(self):
+        """After fixing a duplicate, execution should work."""
+        self.engine.add_cell(cell_id="cell1", code="x = 10")
+        self.engine.add_cell(cell_id="cell2", code="x = 20")  # Duplicate!
+        
+        # Verify duplicate is detected
+        result = self.engine.on_cell_changed("cell2", "x = 20")
+        assert "error" in result
+        
+        # Fix by changing cell2 to not define x
+        result = self.engine.on_cell_changed("cell2", "y = x + 1")
+        
+        assert "execution_order" in result
+        assert "error" not in result
+    
+    def test_multiple_duplicates_all_reported(self):
+        """When multiple variables are duplicated, all are reported."""
+        self.engine.add_cell(cell_id="cell1", code="x = 10\ny = 20")
+        self.engine.add_cell(cell_id="cell2", code="z = 30")
+        
+        # Change cell2 to define both x and y
+        result = self.engine.on_cell_changed("cell2", "x = 1\ny = 2")
+        
+        assert "error" in result
+        assert "x" in result["error"]
+        assert "y" in result["error"]
 
 
 class TestReactiveExecution:

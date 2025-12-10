@@ -141,6 +141,33 @@ class DependencyAnalyzer:
         )
     
     @staticmethod
+    def find_duplicate_definitions(cells: list[tuple[str, str]]) -> dict[str, list[str]]:
+        """
+        Find variables that are defined in multiple cells.
+        
+        In a reactive notebook, each variable should have exactly one cell
+        that defines it to ensure unambiguous dependency tracking.
+        
+        Args:
+            cells: List of (cell_id, code) tuples
+        
+        Returns:
+            Dict mapping variable name -> list of cell_ids that define it
+            (only includes variables defined in 2+ cells)
+        """
+        var_to_cells: dict[str, list[str]] = {}
+        
+        for cell_id, code in cells:
+            defined = DependencyAnalyzer.get_defined_vars(code)
+            for var in defined:
+                if var not in var_to_cells:
+                    var_to_cells[var] = []
+                var_to_cells[var].append(cell_id)
+        
+        # Return only duplicates (variables defined in multiple cells)
+        return {var: cell_ids for var, cell_ids in var_to_cells.items() if len(cell_ids) > 1}
+    
+    @staticmethod
     def build_dependency_graph(cells: list[tuple[str, str]]) -> dict[str, set[str]]:
         """
         Build a dependency graph from a list of cells (Excel-style DAG).
@@ -166,8 +193,8 @@ class DependencyAnalyzer:
             cell_uses[cell_id] = used
         
         # Build mapping of variable -> cell that defines it
-        # If multiple cells define the same variable, first one in display order wins
-        # (This provides deterministic behavior)
+        # Note: Callers should use find_duplicate_definitions() first to check
+        # for variables defined in multiple cells (which is an error condition)
         var_to_cell: dict[str, str] = {}
         
         for cell_id, code in cells:
@@ -291,12 +318,14 @@ class DependencyAnalyzer:
         return result
     
     @staticmethod
-    def has_cycle(cells: list[tuple[str, str]]) -> Optional[str]:
+    def find_cycle(cells: list[tuple[str, str]]) -> Optional[list[str]]:
         """
         Detect if there's a circular dependency in the cells.
         
         Returns:
-            Error message if cycle detected, None otherwise
+            List of cell IDs forming the cycle if detected, None otherwise.
+            The list includes the starting cell repeated at the end to show the cycle.
+            Example: ["cell1", "cell2", "cell1"] means cell1 -> cell2 -> cell1
         """
         dep_graph = DependencyAnalyzer.build_dependency_graph(cells)
         
@@ -304,16 +333,15 @@ class DependencyAnalyzer:
         WHITE, GRAY, BLACK = 0, 1, 2
         color = {cid: WHITE for cid, _ in cells}
         
-        def dfs(node: str, path: list[str]) -> Optional[str]:
+        def dfs(node: str, path: list[str]) -> Optional[list[str]]:
             color[node] = GRAY
             path.append(node)
             
             for dep in dep_graph.get(node, set()):
                 if color[dep] == GRAY:
-                    # Found cycle
+                    # Found cycle - return the cell IDs in the cycle
                     cycle_start = path.index(dep)
-                    cycle = path[cycle_start:] + [dep]
-                    return f"Circular dependency detected: {' -> '.join(cycle)}"
+                    return path[cycle_start:] + [dep]
                 elif color[dep] == WHITE:
                     result = dfs(dep, path)
                     if result:

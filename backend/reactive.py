@@ -94,6 +94,34 @@ class ReactiveEngine:
         """Get cells as (id, code) tuples in order."""
         return [(cell_id, self.cells[cell_id].code) for cell_id in self.cell_order if cell_id in self.cells]
     
+    def _format_duplicate_error(self, duplicates: dict[str, list[str]]) -> str:
+        """Format a user-friendly error message for duplicate variable definitions."""
+        lines = []
+        for var, cell_ids in duplicates.items():
+            # Convert cell IDs to 1-indexed cell numbers based on display order
+            cell_numbers = []
+            for cell_id in cell_ids:
+                if cell_id in self.cell_order:
+                    cell_num = self.cell_order.index(cell_id) + 1  # 1-indexed
+                    cell_numbers.append(f"cell {cell_num}")
+                else:
+                    cell_numbers.append(cell_id)  # Fallback to ID if not found
+            cells_str = ", ".join(cell_numbers)
+            lines.append(f"Variable '{var}' is defined in multiple cells: {cells_str}")
+        return "Each variable must be defined in exactly one cell.\n" + "\n".join(lines)
+    
+    def _format_cycle_error(self, cycle: list[str]) -> str:
+        """Format a user-friendly error message for circular dependencies."""
+        # Convert cell IDs to 1-indexed cell numbers based on display order
+        cell_numbers = []
+        for cell_id in cycle:
+            if cell_id in self.cell_order:
+                cell_num = self.cell_order.index(cell_id) + 1  # 1-indexed
+                cell_numbers.append(f"cell {cell_num}")
+            else:
+                cell_numbers.append(cell_id)  # Fallback to ID if not found
+        return f"Circular dependency detected: {' → '.join(cell_numbers)}"
+    
     def on_cell_changed(self, cell_id: str, new_code: str) -> dict:
         """
         Handle a cell code change and determine what needs to be re-executed.
@@ -117,12 +145,21 @@ class ReactiveEngine:
         # Get cells as tuples for analysis
         cells_tuples = self._get_cells_as_tuples()
         
-        # Check for circular dependencies
-        cycle_error = self.analyzer.has_cycle(cells_tuples)
-        if cycle_error:
+        # Check for duplicate variable definitions
+        duplicates = self.analyzer.find_duplicate_definitions(cells_tuples)
+        if duplicates:
+            error_msg = self._format_duplicate_error(duplicates)
             self.cells[cell_id].status = "error"
-            self.cells[cell_id].error = cycle_error
-            return {"error": cycle_error}
+            self.cells[cell_id].error = error_msg
+            return {"error": error_msg}
+        
+        # Check for circular dependencies
+        cycle = self.analyzer.find_cycle(cells_tuples)
+        if cycle:
+            error_msg = self._format_cycle_error(cycle)
+            self.cells[cell_id].status = "error"
+            self.cells[cell_id].error = error_msg
+            return {"error": error_msg}
         
         # Find downstream cells that need re-execution
         downstream = self.analyzer.find_downstream_cells(cell_id, cells_tuples)
@@ -174,10 +211,17 @@ class ReactiveEngine:
         """
         cells_tuples = self._get_cells_as_tuples()
         
-        # Check for cycles first
-        cycle_error = self.analyzer.has_cycle(cells_tuples)
-        if cycle_error:
-            return [{"cell_id": None, "status": "error", "output": "", "error": cycle_error}]
+        # Check for duplicate variable definitions first
+        duplicates = self.analyzer.find_duplicate_definitions(cells_tuples)
+        if duplicates:
+            error_msg = self._format_duplicate_error(duplicates)
+            return [{"cell_id": None, "status": "error", "output": "", "error": error_msg}]
+        
+        # Check for cycles
+        cycle = self.analyzer.find_cycle(cells_tuples)
+        if cycle:
+            error_msg = self._format_cycle_error(cycle)
+            return [{"cell_id": None, "status": "error", "output": "", "error": error_msg}]
         
         # Get all cell IDs and sort topologically
         all_cell_ids = set(self.cell_order)

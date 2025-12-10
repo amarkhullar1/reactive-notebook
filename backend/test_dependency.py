@@ -164,20 +164,93 @@ class TestBuildDependencyGraph:
         """A cell doesn't depend on itself."""
         cells = [
             ("cell1", "x = 10"),
-            ("cell2", "x = x + 1"),  # Uses x defined in cell1
+            ("cell2", "y = x + 1"),  # Uses x defined in cell1
         ]
         deps = DependencyAnalyzer.build_dependency_graph(cells)
         assert deps["cell2"] == {"cell1"}
+
+
+class TestFindDuplicateDefinitions:
+    """Tests for find_duplicate_definitions."""
     
-    def test_first_definer_wins(self):
-        """When multiple cells define the same var, first one wins."""
+    def test_no_duplicates(self):
+        """No duplicates when each variable is defined in one cell."""
         cells = [
             ("cell1", "x = 10"),
-            ("cell2", "x = 20"),  # Also defines x
-            ("cell3", "y = x"),   # Should depend on cell1 (first definer)
+            ("cell2", "y = 20"),
+            ("cell3", "z = 30"),
         ]
-        deps = DependencyAnalyzer.build_dependency_graph(cells)
-        assert deps["cell3"] == {"cell1"}
+        duplicates = DependencyAnalyzer.find_duplicate_definitions(cells)
+        assert duplicates == {}
+    
+    def test_single_duplicate(self):
+        """Detect a single variable defined in two cells."""
+        cells = [
+            ("cell1", "x = 10"),
+            ("cell2", "x = 20"),
+        ]
+        duplicates = DependencyAnalyzer.find_duplicate_definitions(cells)
+        assert "x" in duplicates
+        assert duplicates["x"] == ["cell1", "cell2"]
+    
+    def test_multiple_duplicates(self):
+        """Detect multiple variables each defined in multiple cells."""
+        cells = [
+            ("cell1", "x = 10\ny = 1"),
+            ("cell2", "x = 20"),
+            ("cell3", "y = 2"),
+        ]
+        duplicates = DependencyAnalyzer.find_duplicate_definitions(cells)
+        assert "x" in duplicates
+        assert "y" in duplicates
+        assert duplicates["x"] == ["cell1", "cell2"]
+        assert duplicates["y"] == ["cell1", "cell3"]
+    
+    def test_same_var_three_cells(self):
+        """Detect a variable defined in three cells."""
+        cells = [
+            ("cell1", "x = 10"),
+            ("cell2", "x = 20"),
+            ("cell3", "x = 30"),
+        ]
+        duplicates = DependencyAnalyzer.find_duplicate_definitions(cells)
+        assert duplicates["x"] == ["cell1", "cell2", "cell3"]
+    
+    def test_function_redefinition(self):
+        """Detect function defined in multiple cells."""
+        cells = [
+            ("cell1", "def foo():\n    return 1"),
+            ("cell2", "def foo():\n    return 2"),
+        ]
+        duplicates = DependencyAnalyzer.find_duplicate_definitions(cells)
+        assert "foo" in duplicates
+    
+    def test_mixed_definition_types(self):
+        """Detect duplicate across different definition types (var vs function)."""
+        cells = [
+            ("cell1", "foo = 10"),
+            ("cell2", "def foo():\n    pass"),
+        ]
+        duplicates = DependencyAnalyzer.find_duplicate_definitions(cells)
+        assert "foo" in duplicates
+    
+    def test_empty_cells(self):
+        """Empty cells have no duplicates."""
+        cells = [
+            ("cell1", ""),
+            ("cell2", ""),
+        ]
+        duplicates = DependencyAnalyzer.find_duplicate_definitions(cells)
+        assert duplicates == {}
+    
+    def test_syntax_error_cells_ignored(self):
+        """Cells with syntax errors don't contribute to duplicates."""
+        cells = [
+            ("cell1", "x = 10"),
+            ("cell2", "x = "),  # Syntax error
+        ]
+        duplicates = DependencyAnalyzer.find_duplicate_definitions(cells)
+        assert duplicates == {}
 
 
 class TestFindDownstreamCells:
@@ -284,7 +357,7 @@ class TestTopologicalSort:
         assert order == []
 
 
-class TestHasCycle:
+class TestFindCycle:
     """Tests for cycle detection."""
     
     def test_no_cycle(self):
@@ -292,7 +365,7 @@ class TestHasCycle:
             ("cell1", "x = 10"),
             ("cell2", "y = x + 1"),
         ]
-        assert DependencyAnalyzer.has_cycle(cells) is None
+        assert DependencyAnalyzer.find_cycle(cells) is None
     
     def test_direct_cycle(self):
         """A -> B -> A creates a cycle."""
@@ -300,9 +373,11 @@ class TestHasCycle:
             ("cell1", "x = y"),  # Uses y from cell2
             ("cell2", "y = x"),  # Uses x from cell1
         ]
-        result = DependencyAnalyzer.has_cycle(cells)
-        assert result is not None
-        assert "Circular dependency" in result
+        cycle = DependencyAnalyzer.find_cycle(cells)
+        assert cycle is not None
+        # Cycle should contain the cell IDs involved
+        assert "cell1" in cycle
+        assert "cell2" in cycle
     
     def test_indirect_cycle(self):
         """A -> B -> C -> A creates a cycle."""
@@ -311,9 +386,12 @@ class TestHasCycle:
             ("cell2", "b = a"),
             ("cell3", "c = b"),
         ]
-        result = DependencyAnalyzer.has_cycle(cells)
-        assert result is not None
-        assert "Circular dependency" in result
+        cycle = DependencyAnalyzer.find_cycle(cells)
+        assert cycle is not None
+        # Cycle should contain all three cells
+        assert "cell1" in cycle
+        assert "cell2" in cycle
+        assert "cell3" in cycle
     
     def test_self_reference_no_cycle(self):
         """A cell using a variable it defines is NOT a cycle."""
@@ -321,7 +399,7 @@ class TestHasCycle:
             ("cell1", "x = 10"),
             ("cell2", "x = x + 1"),  # Uses x from cell1, defines x
         ]
-        assert DependencyAnalyzer.has_cycle(cells) is None
+        assert DependencyAnalyzer.find_cycle(cells) is None
 
 
 class TestExcelStyleBehavior:
@@ -356,7 +434,7 @@ class TestExcelStyleBehavior:
         assert order.index("cell3") < order.index("cell1")
         
         # No cycle
-        assert DependencyAnalyzer.has_cycle(cells) is None
+        assert DependencyAnalyzer.find_cycle(cells) is None
     
     def test_change_bottom_cell_affects_top(self):
         """Changing a cell at the bottom should affect cells at the top."""
