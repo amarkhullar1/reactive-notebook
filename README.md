@@ -116,11 +116,14 @@ make test-watch
 
 # Run tests directly with pytest
 cd backend && python -m pytest -v
+
+# Run only E2E tests
+cd backend && python -m pytest test_e2e.py -v
 ```
 
 ### Test Coverage
 
-- **73 tests** covering:
+- **73+ tests** covering:
   - Variable definition detection (assignments, functions, classes, imports)
   - Variable usage detection
   - Dependency graph construction (Excel-style)
@@ -129,6 +132,14 @@ cd backend && python -m pytest -v
   - Cycle detection
   - Kernel execution (success, errors, output capture)
   - Reactive engine (cell management, execution flow)
+  - **E2E tests** (WebSocket communication, full flow testing):
+    - Regular cell processing and reactive execution
+    - Duplicate variable detection
+    - Circular dependency detection
+    - Timeout handling (infinite loops)
+    - Complex multi-cell scenarios
+
+See `E2E_TESTING.md` for detailed information about end-to-end testing.
 
 ## Makefile Commands
 
