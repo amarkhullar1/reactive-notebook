@@ -360,4 +360,3 @@ if FRONTEND_BUILD_DIR.exists():
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
         return FileResponse(FRONTEND_BUILD_DIR / "index.html")
-
