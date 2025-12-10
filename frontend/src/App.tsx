@@ -63,6 +63,25 @@ function App() {
         );
         break;
 
+      case 'execution_interrupted':
+        // Handle interrupted execution - mark cell as idle
+        if (message.cell_id) {
+          setCells((prev) =>
+            prev.map((c) =>
+              c.id === message.cell_id
+                ? { ...c, status: 'idle' as const, error: 'Interrupted' }
+                : c
+            )
+          );
+        }
+        // Also mark any other running cells as idle
+        setCells((prev) =>
+          prev.map((c) =>
+            c.status === 'running' ? { ...c, status: 'idle' as const } : c
+          )
+        );
+        break;
+
       case 'error':
         // Handle error messages (e.g., circular dependency)
         if (message.cell_id) {
@@ -159,6 +178,13 @@ function App() {
     }
   }, [cells]);
 
+  // Handle interrupt (stop execution)
+  const handleInterrupt = useCallback(() => {
+    wsRef.current?.send({
+      type: 'interrupt',
+    });
+  }, []);
+
   // Add new cell
   const handleAddCell = useCallback(() => {
     wsRef.current?.send({
@@ -181,13 +207,27 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleAddCell]);
 
+  // Check if any cell is running
+  const isAnyRunning = cells.some((c) => c.status === 'running');
+
   return (
     <div className="app">
       <header className="header">
         <h1>Reactive Notebook</h1>
-        <div className="connection-status">
-          <div className={`connection-dot ${connected ? 'connected' : ''}`} />
-          <span>{connected ? 'Connected' : 'Disconnected'}</span>
+        <div className="header-actions">
+          {isAnyRunning && (
+            <button 
+              className="btn btn-stop-global"
+              onClick={handleInterrupt}
+              title="Stop all execution"
+            >
+              ■ Stop
+            </button>
+          )}
+          <div className="connection-status">
+            <div className={`connection-dot ${connected ? 'connected' : ''}`} />
+            <span>{connected ? 'Connected' : 'Disconnected'}</span>
+          </div>
         </div>
       </header>
 
@@ -214,6 +254,7 @@ function App() {
                 onChange={handleCellChange}
                 onDelete={handleCellDelete}
                 onExecute={handleCellExecute}
+                onInterrupt={handleInterrupt}
               />
             ))}
             <div className="add-cell-container">
