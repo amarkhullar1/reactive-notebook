@@ -76,7 +76,6 @@
           1,
           2
         ],
-        "name": null,
         "shape": [
           3,
           3
@@ -88,18 +87,26 @@
     },
     {
       "id": "cell-3120467a",
-      "code": "y = 11",
+      "code": "y = 12",
       "output": "",
       "rich_output": null,
       "error": "",
       "status": "success"
     },
     {
-      "id": "cell-3ad52be1",
+      "id": "cell-ed8b85f9",
+      "code": "print(y)",
+      "output": "12",
+      "rich_output": null,
+      "error": "",
+      "status": "success"
+    },
+    {
+      "id": "cell-bcb6cbb8",
       "code": "while True:\n    pass",
       "output": "",
       "rich_output": null,
-      "error": "TimeoutError: Cell execution timed out after 5 seconds",
+      "error": "Interrupted",
       "status": "error"
     }
   ]
