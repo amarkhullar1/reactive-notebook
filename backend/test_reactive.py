@@ -121,8 +121,8 @@ time.sleep(10)
         assert result["status"] == "success"
         assert "499500" in result["output"]
     
-    def test_namespace_preserved_after_timeout(self):
-        """Namespace should be preserved even after timeout."""
+    def test_namespace_reset_after_timeout(self):
+        """Namespace is reset after timeout (worker process is killed and restarted)."""
         import platform
         if platform.system() == 'Windows':
             pytest.skip("Timeout not supported on Windows")
@@ -131,12 +131,19 @@ time.sleep(10)
         
         # First set a variable
         kernel.execute_cell("cell1", "x = 42")
-        
-        # Then timeout
-        kernel.execute_cell("cell2", "while True: pass")
-        
-        # Variable should still be there
         assert kernel.get_variable("x") == 42
+        
+        # Then timeout - this kills and restarts the worker
+        result = kernel.execute_cell("cell2", "while True: pass")
+        assert result["status"] == "error"
+        assert "TimeoutError" in result["error"]
+        
+        # Variable is gone because worker was restarted
+        assert kernel.get_variable("x") is None
+        
+        # But the kernel still works for new code
+        kernel.execute_cell("cell3", "y = 100")
+        assert kernel.get_variable("y") == 100
 
 
 class TestReactiveEngine:

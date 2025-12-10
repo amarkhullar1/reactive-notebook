@@ -8,9 +8,10 @@ interface CellProps {
   onChange: (cellId: string, code: string) => void;
   onDelete: (cellId: string) => void;
   onExecute: (cellId: string) => void;
+  onInterrupt: () => void;
 }
 
-export function Cell({ cell, cellNumber, onChange, onDelete, onExecute }: CellProps) {
+export function Cell({ cell, cellNumber, onChange, onDelete, onExecute, onInterrupt }: CellProps) {
   const handleEditorChange = (value: string | undefined) => {
     onChange(cell.id, value || '');
   };
@@ -34,17 +35,36 @@ export function Cell({ cell, cellNumber, onChange, onDelete, onExecute }: CellPr
           <StatusIndicator status={cell.status} />
         </div>
         <div className="cell-actions">
-          <button 
-            className="btn btn-icon"
-            onClick={() => onExecute(cell.id)}
-            title="Run cell (Shift+Enter)"
-          >
-            ▶
-          </button>
+          {cell.status === 'running' ? (
+            <button 
+              className="btn btn-icon btn-stop"
+              onClick={onInterrupt}
+              title="Stop execution"
+            >
+              ■
+            </button>
+          ) : (
+            <button 
+              className="btn btn-icon"
+              onClick={() => onExecute(cell.id)}
+              title="Run cell (Shift+Enter)"
+            >
+              ▶
+            </button>
+          )}
           <button 
             className="btn btn-icon btn-danger"
-            onClick={() => onDelete(cell.id)}
-            title="Delete cell"
+            onClick={() => {
+              if (cell.status === 'running') {
+                // If running, interrupt first then delete
+                onInterrupt();
+                // Small delay to let interrupt take effect
+                setTimeout(() => onDelete(cell.id), 100);
+              } else {
+                onDelete(cell.id);
+              }
+            }}
+            title={cell.status === 'running' ? 'Stop and delete cell' : 'Delete cell'}
           >
             ✕
           </button>

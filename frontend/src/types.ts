@@ -50,11 +50,16 @@ export interface DeleteCellMessage {
   cell_id: string;
 }
 
+export interface InterruptMessage {
+  type: 'interrupt';
+}
+
 export type ClientMessage = 
   | CellUpdatedMessage 
   | ExecuteCellMessage 
   | AddCellMessage 
-  | DeleteCellMessage;
+  | DeleteCellMessage
+  | InterruptMessage;
 
 // Backend → Frontend Messages
 
@@ -93,6 +98,12 @@ export interface ExecutionQueueMessage {
   cell_ids: string[];
 }
 
+export interface ExecutionInterruptedMessage {
+  type: 'execution_interrupted';
+  cell_id?: string;
+  message: string;
+}
+
 export interface ErrorMessage {
   type: 'error';
   cell_id?: string;
@@ -106,5 +117,6 @@ export type ServerMessage =
   | ExecutionStartedMessage 
   | ExecutionResultMessage 
   | ExecutionQueueMessage
+  | ExecutionInterruptedMessage
   | ErrorMessage;
 
