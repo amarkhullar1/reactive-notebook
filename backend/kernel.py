@@ -256,12 +256,14 @@ def _worker_loop(request_queue: Queue, response_queue: Queue):
                     result = {
                         "status": "success",
                         "output": "",
+                        "rich_output": None,
                         "error": ""
                     }
                 else:
                     result = _execute_code(code, namespace)
-                    # Remove result_value from response (not serializable for complex objects)
-                    result.pop("result_value", None)
+                    # Serialize rich output while we still have result_value
+                    result_value = result.pop("result_value", None)
+                    result["rich_output"] = serialize_rich_output(result_value)
                 response_queue.put(result)
             
             elif cmd_type == CMD_GET_VAR:
