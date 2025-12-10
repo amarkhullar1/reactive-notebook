@@ -1,7 +1,7 @@
 """Reactive execution engine for the notebook."""
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Any
 
 from kernel import NotebookKernel
 from dependency import DependencyAnalyzer
@@ -13,6 +13,7 @@ class CellData:
     id: str
     code: str = ""
     output: str = ""
+    rich_output: Optional[dict] = None  # Structured output for DataFrames etc.
     error: str = ""
     status: str = "idle"  # idle, running, success, error
 
@@ -180,12 +181,13 @@ class ReactiveEngine:
             cell_id: ID of the cell to execute
         
         Returns:
-            Execution result dict with status, output, error
+            Execution result dict with status, output, rich_output, error
         """
         if cell_id not in self.cells:
             return {
                 "status": "error",
                 "output": "",
+                "rich_output": None,
                 "error": f"Cell {cell_id} not found"
             }
         
@@ -198,6 +200,7 @@ class ReactiveEngine:
         # Update cell state
         cell.status = result["status"]
         cell.output = result["output"]
+        cell.rich_output = result.get("rich_output")
         cell.error = result["error"]
         
         return result

@@ -1,5 +1,6 @@
 import Editor from '@monaco-editor/react';
 import type { Cell as CellType } from './types';
+import { RichOutputViewer } from './RichOutputViewer';
 
 interface CellProps {
   cell: CellType;
@@ -106,10 +107,13 @@ export function Cell({ cell, cellNumber, onChange, onDelete, onExecute }: CellPr
             {cell.error && (
               <pre className="output-content output-error">{cell.error}</pre>
             )}
-            {cell.output && !cell.error && (
+            {!cell.error && cell.rich_output && (
+              <RichOutputViewer data={cell.rich_output} />
+            )}
+            {!cell.error && !cell.rich_output && cell.output && (
               <pre className="output-content">{cell.output}</pre>
             )}
-            {!cell.output && !cell.error && cell.status !== 'idle' && (
+            {!cell.output && !cell.error && !cell.rich_output && cell.status !== 'idle' && (
               <pre className="output-content"></pre>
             )}
           </>

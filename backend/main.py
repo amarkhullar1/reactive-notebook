@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from models import (
-    Cell, CellUpdatedMessage, ExecuteCellMessage, AddCellMessage, DeleteCellMessage,
+    Cell, RichOutput, CellUpdatedMessage, ExecuteCellMessage, AddCellMessage, DeleteCellMessage,
     NotebookStateMessage, CellAddedMessage, CellDeletedMessage,
     ExecutionStartedMessage, ExecutionResultMessage, ExecutionQueueMessage, ErrorMessage
 )
@@ -38,9 +38,10 @@ def load_notebook():
                 for cell_data in data.get("cells", []):
                     cell = Cell(**cell_data)
                     engine.add_cell(cell.id, cell.code, position=None)
-                    # Restore output/error/status
+                    # Restore output/error/status/rich_output
                     if cell.id in engine.cells:
                         engine.cells[cell.id].output = cell.output
+                        engine.cells[cell.id].rich_output = cell.rich_output.model_dump() if cell.rich_output else None
                         engine.cells[cell.id].error = cell.error
                         engine.cells[cell.id].status = cell.status
         except (json.JSONDecodeError, Exception) as e:
@@ -55,6 +56,7 @@ def save_notebook():
             "id": cell.id,
             "code": cell.code,
             "output": cell.output,
+            "rich_output": cell.rich_output,
             "error": cell.error,
             "status": cell.status
         }
@@ -108,6 +110,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 id=c.id,
                 code=c.code,
                 output=c.output,
+                rich_output=RichOutput(**c.rich_output) if c.rich_output else None,
                 error=c.error,
                 status=c.status
             ) for c in cells]
@@ -168,11 +171,17 @@ async def handle_cell_updated(websocket: WebSocket, data: dict):
             # Execute cell
             exec_result = engine.execute_cell(exec_cell_id)
             
+            # Build rich_output model if present
+            rich_output = None
+            if exec_result.get("rich_output"):
+                rich_output = RichOutput(**exec_result["rich_output"])
+            
             # Send execution result
             result_msg = ExecutionResultMessage(
                 cell_id=exec_cell_id,
                 status=exec_result["status"],
                 output=exec_result["output"],
+                rich_output=rich_output,
                 error=exec_result["error"]
             )
             await manager.broadcast(result_msg.model_dump())
@@ -203,6 +212,7 @@ async def handle_add_cell(websocket: WebSocket, data: dict):
             id=cell.id,
             code=cell.code,
             output=cell.output,
+            rich_output=None,
             error=cell.error,
             status=cell.status
         ),

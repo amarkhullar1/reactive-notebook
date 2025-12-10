@@ -44,6 +44,7 @@ function App() {
                   ...c,
                   status: message.status,
                   output: message.output,
+                  rich_output: message.rich_output,
                   error: message.error,
                 }
               : c

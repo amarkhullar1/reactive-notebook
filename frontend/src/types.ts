@@ -4,10 +4,25 @@
 
 export type CellStatus = 'idle' | 'running' | 'success' | 'error';
 
+export type RichOutputType = 'dataframe' | 'series' | 'ndarray';
+
+export interface RichOutput {
+  type: RichOutputType;
+  data: any;  // Array of records for DataFrame, dict for Series, array for ndarray
+  columns?: string[];  // Column names for DataFrame
+  dtypes?: Record<string, string>;  // Data types per column
+  dtype?: string;  // Single dtype for Series or ndarray
+  index?: any[];  // Index values
+  name?: string | null;  // Series name
+  shape: number[];  // Shape of the data
+  truncated: boolean;  // Whether data was truncated
+}
+
 export interface Cell {
   id: string;
   code: string;
   output: string;
+  rich_output?: RichOutput | null;  // Structured output for DataFrames etc.
   error: string;
   status: CellStatus;
 }
@@ -69,6 +84,7 @@ export interface ExecutionResultMessage {
   cell_id: string;
   status: CellStatus;
   output: string;
+  rich_output?: RichOutput | null;
   error: string;
 }
 
