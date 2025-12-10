@@ -1,10 +1,25 @@
 """Pydantic models for WebSocket message types."""
-from typing import Literal, Optional
+from typing import Literal, Optional, Any
 from pydantic import BaseModel
 
 
 # Cell status type
 CellStatus = Literal["idle", "running", "success", "error"]
+
+# Rich output types
+RichOutputType = Literal["dataframe", "series", "ndarray"]
+
+
+class RichOutput(BaseModel):
+    """Structured output for DataFrames, Series, and arrays."""
+    type: RichOutputType
+    data: Any  # The actual data (list of records for DataFrame, etc.)
+    columns: Optional[list[str]] = None  # Column names for DataFrame
+    dtypes: Optional[dict[str, str]] = None  # Data types per column
+    index: Optional[list[Any]] = None  # Index values
+    name: Optional[str] = None  # Series name
+    shape: list[int]  # Shape of the data
+    truncated: bool = False  # Whether data was truncated
 
 
 class Cell(BaseModel):
@@ -12,6 +27,7 @@ class Cell(BaseModel):
     id: str
     code: str = ""
     output: str = ""
+    rich_output: Optional[RichOutput] = None  # Structured output for DataFrames etc.
     error: str = ""
     status: CellStatus = "idle"
 
@@ -76,6 +92,7 @@ class ExecutionResultMessage(BaseModel):
     cell_id: str
     status: CellStatus
     output: str
+    rich_output: Optional[RichOutput] = None
     error: str
 
 

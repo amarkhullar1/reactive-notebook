@@ -2,29 +2,83 @@
   "cells": [
     {
       "id": "cell-84c82dd3",
-      "code": "x = 10",
+      "code": "import numpy\nx = numpy.zeros(10)",
       "output": "",
+      "rich_output": null,
       "error": "",
       "status": "success"
     },
     {
-      "id": "cell-bc707a80",
-      "code": "y = x + 5",
-      "output": "",
+      "id": "cell-f7219cb6",
+      "code": "x",
+      "output": "array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])",
+      "rich_output": {
+        "type": "ndarray",
+        "data": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "dtype": "float64",
+        "shape": [
+          10
+        ],
+        "truncated": false
+      },
       "error": "",
       "status": "success"
     },
     {
-      "id": "cell-3e2a2d57",
-      "code": "print(f\"y is {y}\")",
-      "output": "y is 15",
-      "error": "",
-      "status": "success"
-    },
-    {
-      "id": "cell-53724d06",
-      "code": "print(y)",
-      "output": "15",
+      "id": "cell-fd9cb556",
+      "code": "import pandas as pd\ndf = pd.DataFrame({\n    'name': ['Alice', 'Bob', 'Charlie'],\n    'age': [25, 30, 35],\n    'salary': [50000.0, 60000.0, 70000.0]\n})\ndf  # Renders as a beautiful styled table!",
+      "output": "      name  age   salary\n0    Alice   25  50000.0\n1      Bob   30  60000.0\n2  Charlie   35  70000.0",
+      "rich_output": {
+        "type": "dataframe",
+        "data": [
+          {
+            "name": "Alice",
+            "age": 25,
+            "salary": 50000.0
+          },
+          {
+            "name": "Bob",
+            "age": 30,
+            "salary": 60000.0
+          },
+          {
+            "name": "Charlie",
+            "age": 35,
+            "salary": 70000.0
+          }
+        ],
+        "columns": [
+          "name",
+          "age",
+          "salary"
+        ],
+        "dtypes": {
+          "name": "object",
+          "age": "int64",
+          "salary": "float64"
+        },
+        "index": [
+          0,
+          1,
+          2
+        ],
+        "shape": [
+          3,
+          3
+        ],
+        "truncated": false
+      },
       "error": "",
       "status": "success"
     }

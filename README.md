@@ -11,6 +11,7 @@ A reactive Python notebook with **Excel-style dependency tracking** where cells 
 - **Cycle Detection**: Circular dependencies are detected and reported
 - **Monaco Editor**: Full-featured Python code editing with syntax highlighting
 - **Persistence**: Notebook state is saved to disk and restored on restart
+- **Rich Output Display**: Beautiful rendering of pandas DataFrames, Series, and numpy arrays
 
 ## How It Differs from Jupyter
 
@@ -120,7 +121,7 @@ cd backend && python -m pytest -v
 
 ### Test Coverage
 
-- **73 tests** covering:
+- **126 tests** covering:
   - Variable definition detection (assignments, functions, classes, imports)
   - Variable usage detection
   - Dependency graph construction (Excel-style)
@@ -129,6 +130,7 @@ cd backend && python -m pytest -v
   - Cycle detection
   - Kernel execution (success, errors, output capture)
   - Reactive engine (cell management, execution flow)
+  - Rich output serialization (DataFrames, Series, ndarrays)
 
 ## Makefile Commands
 
@@ -150,7 +152,7 @@ cd backend && python -m pytest -v
 
 - Single user only
 - No authentication
-- No timeout handling (infinite loops will hang the server)
+
 - No sandbox (runs with full Python access)
-- Text-only output (no images or HTML)
-- If multiple cells define the same variable, first one in display order wins
+- No image output (matplotlib plots, etc.)
+
